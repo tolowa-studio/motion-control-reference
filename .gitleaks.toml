@@ -1,0 +1,4 @@
+title = "MOTION Control Reference secret-scanning rules"
+
+[extend]
+useDefault = true

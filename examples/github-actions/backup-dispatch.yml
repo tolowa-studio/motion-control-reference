@@ -1,0 +1,39 @@
+name: Backup dispatch template
+
+on:
+  workflow_dispatch:
+    inputs:
+      cadence:
+        description: Backup cadence selected by the external scheduler
+        required: true
+        default: hourly
+        type: choice
+        options: [hourly, daily]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: backup-${{ inputs.cadence }}
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.BACKUP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Fetch secret-backed connection data
+        env:
+          SECRET_NAME: REPLACE_ME
+        run: |
+          set -euo pipefail
+          connection="$(gcloud secrets versions access latest --secret="$SECRET_NAME")"
+          echo "::add-mask::$connection"
+          # Run your backup command here. Do not echo the connection string.
+          echo "Backup for ${{ inputs.cadence }} cadence would run here."

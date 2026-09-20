@@ -1,0 +1,50 @@
+name: External health check
+
+on:
+  workflow_dispatch:
+  # Optional fallback only. Do not duplicate a cadence owned by an external scheduler.
+  schedule:
+    - cron: '23 */6 * * *'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: external-health-check
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.HEALTHCHECK_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Probe protected endpoint
+        env:
+          TARGET_URL: ${{ vars.HEALTHCHECK_TARGET_URL }}
+        run: |
+          set -euo pipefail
+          token="$(gcloud auth print-identity-token)"
+          curl --fail --silent --show-error \
+            --header "Authorization: Bearer $token" \
+            "$TARGET_URL"
+
+  deadman:
+    needs: probe
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report outcome to independent dead-man's switch
+        env:
+          PING_URL: ${{ secrets.HEALTHCHECK_PING_URL }}
+          RESULT: ${{ needs.probe.result }}
+        run: |
+          set -euo pipefail
+          suffix=""
+          [ "$RESULT" = success ] || suffix="/fail"
+          curl --fail --silent --show-error "$PING_URL$suffix"
